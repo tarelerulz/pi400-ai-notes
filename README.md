@@ -39,6 +39,9 @@ faster than realtime.
 
 ## What's in here
 
+- [why-your-cpu-matters.md](why-your-cpu-matters.md) — the CPU instructions
+  AI speedups depend on (dotprod, i8mm, SVE…), which chips have them, and how
+  to check yours in 10 seconds.
 - [text-to-speech.md](text-to-speech.md) — 19 TTS engines timed, and why
   architecture matters far more than parameter count.
 - [speech-to-text.md](speech-to-text.md) — dictation, long-file transcription
@@ -58,6 +61,7 @@ faster than realtime.
 2. **Most "ARM-optimized" speedups skip this chip.** They need dotprod or
    i8mm, which the Cortex-A72 doesn't have. Check `/proc/cpuinfo` Features
    before believing a speed claim — the A72 shows only `fp asimd evtstrm crc32`.
+   See [why-your-cpu-matters.md](why-your-cpu-matters.md).
 3. **Model-card speeds usually come from much faster CPUs.** Measured gaps
    ranged from "a bit slower" to 130x (TinyTTS: claimed 53x faster than
    realtime, measured 2.4x *slower* than realtime). Always time it yourself.
