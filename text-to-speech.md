@@ -90,6 +90,16 @@ What does predict it:
   phonemes in double brackets using its ASCII mnemonics, e.g.
   `[[dZ'Entu:]]`. Get the real string from espeak-ng rather than guessing —
   a hand-guessed string produced unrecognisable audio.
+- **Highlighting each word as it's read.** heart's duration model knows when each *spoken* word starts
+  and ends (a small local patch makes audio.cpp's CLI write them out). Those spoken words then have to be
+  matched to the *written* ones, and two things break a simple match: the phonemizer **joins** short
+  words into one spoken word ("was a" → *wʌzə*, "on the" → *ɔnðə*), and **abbreviations are spelled
+  out** ("CPU" is 3 letters, 6 sounds). A match that can only give a written word *no* sound zeroed a
+  nearby word and ran the highlight one word ahead for the rest of the sentence. Allowing two written
+  words to share one spoken word (time split by expected length) and counting all-caps words as letter
+  names cut zero-time words from 5 to 1 in 276 (the one left is a "-", which really has no sound).
+  For the playback position, mpv's `time-pos` is reliable here: it doesn't start counting before the
+  first audio arrives, and it stops while the next sentence is still being synthesised.
 
 ## Measured gaps between claims and reality
 
