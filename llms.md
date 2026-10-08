@@ -106,7 +106,10 @@ LFM2.5-1.2B QAD-Q4_0, same binary, 3 threads on 3 pinned cores:
 |---|---|---|
 | generation (tg16) | **4.67 tok/s** | **0.07 tok/s** (~14 s per token) |
 | prompt processing (pp64) | **7.32 tok/s** | never ran: still compiling one shader after 30 min |
+| prompt processing, 1 token at a time (pp16, `-ub 1`) | **3.62 tok/s** | **0.05 tok/s** |
 | time before the first token | ~2 s | ~8.5 min (generation shaders) |
+
+With `-ub 1` the GPU reuses the small shaders that generation already compiled, so it can read a prompt, one token at a time, about 72x slower than the CPU doing the same. (`-ub 8` doesn't help: attention still needs a large matrix-multiply shader, which also never finished compiling.)
 
 Most of the start-up time is the driver compiling llama.cpp's shaders on the CPU. The big Q4_0
 matrix-multiply shader for prompt processing never finished compiling, and `test-backend-ops` didn't get
