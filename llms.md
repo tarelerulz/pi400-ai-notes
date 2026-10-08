@@ -73,11 +73,52 @@ Notes:
 | LiquidAI DSpark (draft model for LFM2.5-2.6B) | no gain (1.98 → 2.00, then 1.73 tok/s), despite 49–63% draft acceptance. Marketed as up to 3.18x on an H100. |
 | Split thread counts: `-t 3 -tb 4` | Free win. Generation peaks at 3 threads (the 4th adds bus contention); prompt processing keeps scaling to 4. |
 | New llama.cpp ARM kernels (KleidiAI, Q4_K/Q1_0 repack, tiled k-quant matmul) | Don't apply: they need dotprod/i8mm/SVE, or are x86-only. |
+| Run it on the GPU (Vulkan, V3D 4.2) | **67x slower** generation; prompt processing never got past shader compilation. [Details below](#can-the-pi-400s-gpu-help-no--67x-slower-tested). |
 
 Speculative output was **not bit-identical** to plain greedy decoding, even at
 temperature 0: verification runs a batch through a different matmul path and
 float addition isn't associative, so near-tied tokens can flip. The output is
 deterministic and not worse, just not byte-exact.
+
+## Can the Pi 400's GPU help? No — 67x slower (tested)
+
+The Pi 400's GPU is a VideoCore VI (V3D 4.2). **VC4CL**, the OpenCL project people point to, only supports
+the older VideoCore IV (Pi 1/2/3/Zero), so it isn't an option. The working route is Mesa's **v3dv** Vulkan
+driver plus llama.cpp's Vulkan backend, so that's what was measured.
+
+What the GPU offers (`vulkaninfo`, V3DV Mesa 25.0.7, Vulkan 1.3):
+
+| feature | V3D 4.2 | why it matters |
+|---|---|---|
+| 16-bit float math (`shaderFloat16`) | **no** | fast GPU inference does its math in fp16 |
+| 8-bit integer math (`shaderInt8`, int dot) | **no** | the other fast path, for quantized weights |
+| 16/8-bit storage | yes | can *store* small numbers, but must compute in fp32 |
+| shared memory per workgroup | **16 KB** | small tiles for matrix multiplication |
+| memory | 1.85 GB, shared with the CPU | same RAM, same ~3 GB/s as the CPU |
+
+Stock llama.cpp (build 4d756bc72) refuses to start on it: *"Shared memory size too small for matrix
+multiplication."* It aborts the whole device if any quantization type doesn't fit in 16 KB; only `iq2_s`
+(an 8 KB lookup table) fails. A one-line local patch that disables just that type lets it run.
+
+LFM2.5-1.2B QAD-Q4_0, same binary, 3 threads on 3 pinned cores:
+
+| | CPU (`-ngl 0`) | GPU (`-ngl 99`) |
+|---|---|---|
+| generation (tg16) | **4.67 tok/s** | **0.07 tok/s** (~14 s per token) |
+| prompt processing (pp64) | **7.32 tok/s** | never ran: still compiling one shader after 30 min |
+| time before the first token | ~2 s | ~8.5 min (generation shaders) |
+
+Most of the start-up time is the driver compiling llama.cpp's shaders on the CPU. The big Q4_0
+matrix-multiply shader for prompt processing never finished compiling, and `test-backend-ops` didn't get
+past shader creation in 25 minutes either. Mesa's shader cache didn't help, since the compile never completed.
+
+Even a perfect GPU couldn't win at generation here: it is memory-bound (see the top of this page), and the
+GPU shares the CPU's RAM. Only prompt processing is compute-bound, and without fp16 or int8 math the GPU has
+no way to be faster there than four A72 cores running NEON.
+
+Testing it didn't need any installs: Raspberry Pi OS ships the v3dv driver, and pointing a Gentoo system's
+`VK_ICD_FILENAMES` and `LD_LIBRARY_PATH` at Raspberry Pi OS's `libvulkan.so.1` and `libvulkan_broadcom.so`
+(plus `libxshmfence` and `libwayland-client`) was enough for `vulkaninfo` and llama.cpp to find the GPU.
 
 ## Practical gotchas
 
