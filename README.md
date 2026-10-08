@@ -15,7 +15,7 @@ result. Things that were only read about, not run, are labelled as such.
 | CPU | 4x Cortex-A72 @ 1.8 GHz (ARMv8.0-A) | Tensor G4, 8 vCPUs exposed to the VM |
 | SIMD | NEON only — **no dotprod, no i8mm, no SVE/SME** | NEON + dotprod + i8mm + SVE2 |
 | RAM | 3.7 GB usable, measured ~3.2–3.9 GB/s read bandwidth | 6 GB allocated to the VM |
-| Accelerators | none (no PCIe, so no AI HAT); the GPU (V3D 4.2) was tested and is 67x slower than the CPU | none reachable from inside the VM (CPU only) |
+| Accelerators | none (no PCIe, so no AI HAT); the GPU (V3D 4.2) was tested: 67x slower through llama.cpp; hand-written shaders beat the CPU for f32 but not for 4-bit weights | none reachable from inside the VM (CPU only) |
 | OS | Gentoo userland on the Raspberry Pi OS 6.12 kernel | Debian (Android Virtualization Framework) |
 
 The Pi 4 has the same CPU and memory system as the Pi 400, so every Pi 400

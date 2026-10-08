@@ -73,14 +73,14 @@ Notes:
 | LiquidAI DSpark (draft model for LFM2.5-2.6B) | no gain (1.98 → 2.00, then 1.73 tok/s), despite 49–63% draft acceptance. Marketed as up to 3.18x on an H100. |
 | Split thread counts: `-t 3 -tb 4` | Free win. Generation peaks at 3 threads (the 4th adds bus contention); prompt processing keeps scaling to 4. |
 | New llama.cpp ARM kernels (KleidiAI, Q4_K/Q1_0 repack, tiled k-quant matmul) | Don't apply: they need dotprod/i8mm/SVE, or are x86-only. |
-| Run it on the GPU (Vulkan, V3D 4.2) | **67x slower** generation; prompt processing never got past shader compilation. [Details below](#can-the-pi-400s-gpu-help-no--67x-slower-tested). |
+| Run it on the GPU (Vulkan, V3D 4.2) | llama.cpp: **67x slower** generation; prompt processing never got past shader compilation. Hand-written shaders: faster than the CPU for f32 matrix-vector, still 2.3x slower for 4-bit. [Details below](#can-the-pi-400s-gpu-help-not-through-llamacpp-67x-slower-hand-written-shaders-show-what-it-can-do). |
 
 Speculative output was **not bit-identical** to plain greedy decoding, even at
 temperature 0: verification runs a batch through a different matmul path and
 float addition isn't associative, so near-tied tokens can flip. The output is
 deterministic and not worse, just not byte-exact.
 
-## Can the Pi 400's GPU help? No — 67x slower (tested)
+## Can the Pi 400's GPU help? Not through llama.cpp (67x slower); hand-written shaders show what it can do
 
 The Pi 400's GPU is a VideoCore VI (V3D 4.2). **VC4CL**, the OpenCL project people point to, only supports
 the older VideoCore IV (Pi 1/2/3/Zero), so it isn't an option. The working route is Mesa's **v3dv** Vulkan
@@ -115,9 +115,42 @@ Most of the start-up time is the driver compiling llama.cpp's shaders on the CPU
 matrix-multiply shader for prompt processing never finished compiling, and `test-backend-ops` didn't get
 past shader creation in 25 minutes either. Mesa's shader cache didn't help, since the compile never completed.
 
-Even a perfect GPU couldn't win at generation here: it is memory-bound (see the top of this page), and the
-GPU shares the CPU's RAM. Only prompt processing is compute-bound, and without fp16 or int8 math the GPU has
-no way to be faster there than four A72 cores running NEON.
+### What the GPU itself can do: hand-written shaders
+
+To separate the hardware from llama.cpp's shaders, the same jobs were run with small hand-written Vulkan
+compute shaders, every result checked against the CPU. W = 8192 x 2048 (the size of LFM2.5-1.2B's largest
+matrix):
+
+| job | CPU (3 threads) | GPU, best hand-written shader |
+|---|---|---|
+| read memory | 3.6 GB/s | **6.1 GB/s** (sum verified) |
+| f32 multiply-add | — | 12.5 GFLOPS |
+| y = W x, f32 weights | ~19–20 ms (plain C and llama.cpp) | **12.0 ms — 1.6x faster than the CPU** |
+| y = W x, 4-bit Q4_0-style weights | **~3.2 ms** (llama.cpp, scaled from its 4096 x 14336 case) | 7.5 ms |
+| llama.cpp's own Vulkan Q4_0 shader | | 230 ms |
+
+**Correction:** an earlier version of this page said even a perfect GPU couldn't win at generation, because
+it shares the CPU's RAM. That was wrong. The GPU's path to RAM is ~1.7x faster than what the A72 cores
+reach, and with f32 weights a well-written GPU matrix-vector beats the CPU. With 4-bit weights it still
+loses: without int8 or fp16 math it has to unpack every weight in f32, so 4-bit is limited by its
+arithmetic, not by memory, while llama.cpp's NEON code unpacks much faster. Since small models only fit
+because of 4-bit weights, the CPU remains the better place to run them on this machine.
+
+What made the shaders fast, in order:
+
+1. **256 threads per workgroup.** Every test scaled almost linearly up to it (memory reads: 0.8 GB/s at 32
+   threads, 6.1 at 256).
+2. **Weights stored row-interleaved:** one thread per output row, and element *j* of every row stored next
+   to element *j* of the neighbouring rows, so neighbouring threads always read neighbouring memory and no
+   sums across threads are needed. (A workgroup per row, the usual layout, stayed at ~1 GB/s.)
+3. **The input vector in shared memory** (8 KB fits in the 16 KB), fetched once per workgroup instead of
+   once per weight per thread: f32 3.5 → 5.6 GB/s, 4-bit 13.4 → 7.5 ms.
+
+Splitting rows into parts (split-K) and several rows per workgroup did not help. The driver exposes only
+basic subgroup operations (no `subgroupAdd`), so sums across threads have to go through shared memory.
+This is 31x faster than llama.cpp's shader for the same 4-bit matrix, but a whole model written this way
+would still be estimated at roughly 2 tokens/s for LFM2.5-1.2B against the CPU's 4.7 (an estimate, not
+measured).
 
 Testing it didn't need any installs: Raspberry Pi OS ships the v3dv driver, and pointing a Gentoo system's
 `VK_ICD_FILENAMES` and `LD_LIBRARY_PATH` at Raspberry Pi OS's `libvulkan.so.1` and `libvulkan_broadcom.so`
