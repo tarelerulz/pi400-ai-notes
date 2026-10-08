@@ -15,7 +15,7 @@ result. Things that were only read about, not run, are labelled as such.
 | CPU | 4x Cortex-A72 @ 1.8 GHz (ARMv8.0-A) | Tensor G4, 8 vCPUs exposed to the VM |
 | SIMD | NEON only — **no dotprod, no i8mm, no SVE/SME** | NEON + dotprod + i8mm + SVE2 |
 | RAM | 3.7 GB usable, measured ~3.2–3.9 GB/s read bandwidth | 6 GB allocated to the VM |
-| Accelerators | none (no PCIe, so no AI HAT); the GPU (V3D 4.2) was tested: 67x slower through llama.cpp; hand-written shaders beat the CPU for f32 but not for 4-bit weights | none reachable from inside the VM (CPU only) |
+| Accelerators | none (no PCIe, so no AI HAT); the GPU (V3D 4.2) was tested: 67x slower through llama.cpp; hand-written shaders beat the CPU for f32 but not for 4-bit weights; it runs a small wake-word model 2.5x faster than the CPU | none reachable from inside the VM (CPU only) |
 | OS | Gentoo userland on the Raspberry Pi OS 6.12 kernel | Debian (Android Virtualization Framework) |
 
 The Pi 4 has the same CPU and memory system as the Pi 400, so every Pi 400
@@ -33,6 +33,7 @@ number should carry over to a Pi 4 with equal RAM.
 | General chat LLM | Qwen3.5-2B Q4_0 | ~2.4 tok/s generation |
 | Fast small LLM | LFM2.5-1.2B QAD-Q4_0 | ~4.8 tok/s |
 | Tool routing ("is this a weather/time/dice question?") | LFM2.5-1.2B with a grammar-constrained one-word answer | 16/18 correct, ~0.7–4 s |
+| Wake word ("start dictation") | own 15.7k-weight CNN trained on one voice ([pi-wake-word](https://github.com/tarelerulz/pi-wake-word)), on the GPU | 0.12 s per sound, 16 ms of CPU |
 
 RTF (real-time factor) = seconds of compute per second of audio. Below 1.0 is
 faster than realtime.
@@ -44,8 +45,9 @@ faster than realtime.
   to check yours in 10 seconds.
 - [text-to-speech.md](text-to-speech.md) — 19 TTS engines timed, and why
   architecture matters far more than parameter count.
-- [speech-to-text.md](speech-to-text.md) — dictation, long-file transcription
-  and subtitles, with real word-error rates against closed captions.
+- [speech-to-text.md](speech-to-text.md) — dictation, long-file transcription,
+  subtitles with real word-error rates against closed captions, and a personal
+  wake word trained on one voice (running on the GPU).
 - [llms.md](llms.md) — why generation is memory-bandwidth-bound on this chip,
   which quantizations and tricks help (few do), why the GPU doesn't help,
   ternary/BitNet, tool routing.

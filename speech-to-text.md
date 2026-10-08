@@ -124,6 +124,51 @@ same settings. Neither engine got the film's invented fantasy names right.
 starts within 0.5 s on one 120 s window, but adds ~1.3–1.5x realtime after
 Canary. Not yet better than Parakeet for a whole film.
 
+## 4. A personal wake word — and a real job for the GPU
+
+An always-on "start dictation" listener used to run full speech recognition (Moonshine base) on every
+sound it heard, just to catch two words: **~10% of the whole CPU, averaged over a day**. It was replaced by
+a tiny model trained on one voice. The kit is published separately:
+[pi-wake-word](https://github.com/tarelerulz/pi-wake-word).
+
+**The model:** 1.5 s of sound → 40 mel bands × 148 frames → a depthwise-separable CNN, 15,683 weights,
+outputs "start dictation" / "stop dictation" / other. Trained on the Pi's CPU (PyTorch, 3 threads): 40 min
+from scratch, 12 min to fine-tune. It runs with plain numpy, no PyTorch needed.
+
+**Getting it to work** (each line is a version):
+
+| change | result on recordings it never trained on |
+|---|---|
+| 15 takes per phrase | 99.5% training accuracy, **0 of 6** new takes heard — it learned those exact recordings |
+| + the phrases in 4 TTS voices, SpecAugment, dropout | 4 of 6 heard |
+| + real "stop dictation" found in saved dictation clips (the ASR spelled them "STOT TICTATION", "Stopdication") + TTS near-misses | live stops 3/3, but "stop and listen" fired |
+| 55 takes per phrase, 40 near-misses, 64 channels | 9/11 and 11/11 heard, 0 false triggers in 9.5 min of other speech |
+| **live**: same model, real tries through the live listener | only **5–64% sure** — 9 tries to start once |
+| fine-tuned on **6 confirmed live tries** (~12 min) | new live tries **95–100%**; starts on the first try |
+
+The live gap was the whole problem: the live listener cuts sound with its own voice detector (which clips
+word starts), and a phrase *said* is not the same as a phrase *recorded on cue*. A handful of real tries
+fixed what 55 recorded takes could not. Threshold 0.8: no false starts in 12.8 min of other speech
+(including a TTS voice reading email aloud in the room, which must never trigger it).
+
+**Live:** the model decides in ~0.23 s (the speech-recognition check took 0.7–0.8 s), and the listener's
+average CPU went from ~10% to ~5%.
+
+**On the GPU** (V3D 4.2 via Vulkan, hand-written shaders — see the GPU section of [llms.md](llms.md)):
+
+| one 1.7 s sound (12 windows) | time | CPU time used |
+|---|---|---|
+| numpy on the CPU | 289 ms | 298 ms |
+| GPU, one thread per output value | 206 ms | |
+| **GPU, faster shaders** | **116 ms** | **16 ms** |
+
+Same answers as the CPU (largest difference 4.5e-7). What made the faster shaders faster is the same
+lesson as the matrix tests: the first layer reads its 9 input values once per position and makes all 64
+outputs from them, and the pointwise layers make 8 outputs per input they read, with the weights in
+shared memory. Computing the sound features once per sound instead of once per overlapping window cut
+them from 56–83 ms to 13–15 ms on the CPU. **This is the one job found where the Pi 400's GPU helps:** a
+small f32 model, simple layers, nothing to unpack.
+
 ## Bugs and traps (details in [lessons.md](lessons.md))
 
 - **Canary silently skips the middle of long input.** Given 120 s in one call

@@ -152,6 +152,10 @@ This is 31x faster than llama.cpp's shader for the same 4-bit matrix, but a whol
 would still be estimated at roughly 2 tokens/s for LFM2.5-1.2B against the CPU's 4.7 (an estimate, not
 measured).
 
+**A job where it does help:** a tiny f32 wake-word CNN (15.7k weights) runs 2.5x faster on the GPU than
+in numpy and uses ~19x less CPU (16 vs 298 ms per sound) — see
+[speech-to-text.md](speech-to-text.md#4-a-personal-wake-word--and-a-real-job-for-the-gpu).
+
 Testing it didn't need any installs: Raspberry Pi OS ships the v3dv driver, and pointing a Gentoo system's
 `VK_ICD_FILENAMES` and `LD_LIBRARY_PATH` at Raspberry Pi OS's `libvulkan.so.1` and `libvulkan_broadcom.so`
 (plus `libxshmfence` and `libwayland-client`) was enough for `vulkaninfo` and llama.cpp to find the GPU.
