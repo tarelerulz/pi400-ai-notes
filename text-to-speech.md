@@ -50,6 +50,63 @@ loading costs only ~50–70 ms.
 audio.cpp, plain ARMv8 build) — slower than realtime even there. A listener
 rated it and heart "both sound good" with no preference.
 
+## A faster ARM decoder for heart and heart-nano
+
+The part of heart / heart-nano that turns the planned speech into sound (the
+"decoder") was rewritten by hand for ARM CPUs and offered to audio.cpp as
+[pull request #860](https://github.com/0xShug0/audio.cpp/pull/860) (not merged
+yet). Same model files, same voice: on 32 test runs, 99.6–99.8% of audio
+samples came out identical and the rest differed by the smallest possible step.
+The code was written with an AI coding assistant (Claude) and measured on the
+hardware below.
+
+**Using it:** it's an opt-in setting, off by default.
+
+```
+audiocpp_cli --family sanotts --task tts --model <heart-nano package> ... \
+  --session-option sanotts.cpu_decoder=neon
+```
+
+Until the PR is merged, build audio.cpp from the
+[`sanotts-neon-decoder` branch](https://github.com/tarelerulz/audio.cpp/tree/sanotts-neon-decoder).
+Model packages converted before the option existed reject it as unknown; add
+`--model-spec-override <audio.cpp>/model_specs/sanotts.json` or re-download the
+package. Any 64-bit ARM CPU (Pi 3/4/5/400, phones, Apple Silicon, ARM servers)
+can run it; other CPUs keep using the normal decoder.
+
+**Pi 400**, 3 threads, whole program, best of 3:
+
+| voice | text (audio length) | normal | NEON | speed-up |
+|---|---|---:|---:|---:|
+| heart-nano | 6-sentence email (13.8 s) | 250 ms | 162 ms | 1.54x |
+| heart-nano | 4.9 kB text (5.6 min) | 4.94 s | 2.67 s | 1.85x |
+| heart | 6-sentence email (14.3 s) | 714 ms | 450 ms | 1.59x |
+| heart | 4.9 kB text (5.7 min) | 15.9 s | 9.1 s | 1.75x |
+
+**Pixel 9 phone VM**, 1 thread (faster than 2 inside the VM, for both
+decoders): making the audio itself ran at 190x → **577x** realtime for
+heart-nano and 50x → 139x for heart on the 4.9 kB text. The whole Wikipedia
+"Apollo 11" article (13,185 words, **92 minutes** of speech) took **14.2 s** start
+to finish with the NEON decoder against 34.1 s with the normal one, about
+9 seconds per hour of speech.
+
+Why it's faster, in short:
+1. The weights are rearranged once so the CPU reads them in one straight line
+   instead of jumping around memory.
+2. Each step works on 4 output channels × 16 time frames at once, filling the
+   CPU's NEON vector registers.
+3. All threads share every layer instead of splitting the work up by layer.
+4. Two consecutive layers with nothing between them are merged into one.
+
+Two things learned along the way:
+- **How threads wait for each other matters.** With a sleep-and-wake-up wait
+  between layers, 2 threads were *slower* than 1 inside the phone VM (waking
+  a thread is expensive in a VM). A short busy-wait fixed it and was also
+  slightly faster on the Pi.
+- **Long texts need memory, regardless of decoder.** audio.cpp keeps the whole
+  result until it writes the file: about 12 MB per minute of speech (1.15 GB
+  for the 92-minute article). On a 4 GB Pi that's roughly 3 hours per run.
+
 ## Why architecture decides speed, not size
 
 Parameter count is a poor predictor. Examples from the table:

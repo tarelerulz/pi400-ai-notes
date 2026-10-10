@@ -25,7 +25,7 @@ number should carry over to a Pi 4 with equal RAM.
 
 | job | best choice found on the Pi 400 | speed on the Pi 400 |
 |---|---|---|
-| Text-to-speech, fast | **sanoTTS "heart"** (2.27M params) via audio.cpp | RTF 0.05 — about 20x faster than realtime |
+| Text-to-speech, fast | **sanoTTS "heart"** (2.27M params) via audio.cpp | RTF 0.05 — about 20x faster than realtime; a hand-written ARM decoder makes heart and heart-nano 1.5–1.9x faster again ([details](text-to-speech.md#a-faster-arm-decoder-for-heart-and-heart-nano), audio.cpp PR pending) |
 | Text-to-speech, clearest consonants | Piper `en_US-lessac-low` via sherpa-onnx | RTF 0.29 |
 | Live dictation | **Moonshine tiny** (27M, Q8_0 GGUF) via transcribe.cpp | ~1.5 s for an 8 s utterance, cold |
 | Batch transcription, most words right | Canary-180M-flash Q4_K_M via transcribe.cpp, **40 s chunks** | ~0.5x realtime |
